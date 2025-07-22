@@ -26,11 +26,25 @@
       doCheck = false;
     };
 
+    sconsPkg = pythonPackages.buildPythonPackage rec {
+      pname = "scons";
+      version = "4.9.1";
+      src = pkgs.fetchFromGitHub {
+        owner = "SCons";
+        repo = "scons";
+        rev = version;
+        hash = "sha256-nVjUJQ6AuGvq9mmVVWy35kJbNY16PbLURw6vYtIoJsE=";
+      };
+      pyproject = true;
+      nativeBuildInputs = [ pythonPackages.setuptools pythonPackages.wheel ];
+      doCheck = false;
+    };
+
     opendbcSrc = pkgs.fetchFromGitHub {
       owner = "commaai";
       repo  = "opendbc";
-      rev = "v0.2.1";
-      sha256 = "sha256-bA2FJYy7rIkDfmLClXQz0qECBzEMKfbpglBEiRWUnE4=";
+      rev = "08469e941683fdb685d0c20eeee5c92cc9d31710";
+      sha256 = "sha256-7Ex8OvwnNAOvZAQyh9NErIC4lGaZ2GKMQ4az9L1RgPg=";
     };
     opendbcPkg = pythonPackages.buildPythonPackage rec {
       pname = "opendbc";
@@ -38,9 +52,9 @@
       src = opendbcSrc;
       format = "other";
 
-      # Build‑time tools: Python‑SCons, Cython, NumPy, setuptools
       nativeBuildInputs = [
-        pkgs.scons
+        sconsPkg
+        pkgs.patchelf
         pythonPackages.cython
         pythonPackages.setuptools
         pythonPackages.distutils
@@ -73,40 +87,52 @@
       '';
 
       buildPhase = ''
-        scons -Q -f SConstruct
+        ${python.interpreter} -m SCons -Q -f SConstruct --minimal
       '';
 
       installPhase = ''
-        mkdir -p $out/${python.sitePackages}
-        cp -r opendbc $out/${python.sitePackages}/
+        dest=$out/${python.sitePackages}/opendbc
+        mkdir -p "$dest"
+        cp -r opendbc/* "$dest"/
+        # prune intermediates (.os .o, .h, etc.):
+        find "$dest/can" -type f \
+          ! -name '*.py' \
+          ! -name '*.dbc' \
+          ! -name '*.so' \
+          -delete
+      '';
+
+      preFixup = ''
+        # Fix relative dependencies
+        for lib in libdbc.so packer_pyx.so parser_pyx.so; do
+          patchelf --set-rpath '$ORIGIN' "$out/${python.sitePackages}/opendbc/can/$lib"
+        done
       '';
     };
 
     pandaSrc = pkgs.fetchgit {
       url = "https://github.com/commaai/panda.git";
-      rev = "ca603115cb3f570e4d8ba20607ac24b4352ddbd6";
-      sha256 = "sha256-9LQrNFer4rghHmOHgj/kZjDIJhln8sRmducI3kBHYZU=";
+      rev = "ee32eb524085f4bf8fbcc6abc123f45a0f13fd42";
+      sha256 = "sha256-ftDmfEKaQLovkG7hkv51FEmWycrWiizklk80yTf5YAY=";
+      leaveDotGit = true;
     };
     pandaPkg = pythonPackages.buildPythonPackage rec {
       pname = "panda";
       version = "2025-07-20";
       src = pandaSrc;
-      format = "setuptools";
-
-      nativeBuildInputs = [ pkgs.scons ];
-      propagatedBuildInputs = [ opendbcPkg ];
+      format = "other";
+      nativeBuildInputs = [];
       doCheck = false;
 
-      buildPhase = ''
-        ${python.interpreter} -m SCons -Q
-      '';
+      # Skip building firmware, we only care about the python userspace libray
+      buildPhase = "";
+
       installPhase = ''
-        mkdir -p $out/${python.sitePackages}
-        cp -r python $out/${python.sitePackages}/panda
+        install -d $out/${python.sitePackages}/panda
+        cp -r python/* $out/${python.sitePackages}/panda/
       '';
     };
 
-    # 4) Combine everything into one Python environment
     pythonEnv = python.withPackages (ps: with ps; [
       cantools
       "python-can"
@@ -123,7 +149,10 @@
     ]);
 
   in {
-    packages.${system}.opendbc = opendbcPkg;
+    packages.${system} = {
+      opendbc = opendbcPkg;
+      panda = pandaPkg;
+    };
     devShells.${system}.default = pkgs.mkShell {
       buildInputs = [
         pythonEnv
