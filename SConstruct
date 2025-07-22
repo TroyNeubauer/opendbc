@@ -2,7 +2,7 @@ import os
 import subprocess
 import sysconfig
 import platform
-import numpy as np
+# import numpy as np
 
 arch = subprocess.check_output(["uname", "-m"], encoding='utf8').rstrip()
 if platform.system() == "Darwin":
@@ -69,7 +69,7 @@ common = ''
 Export('env', 'arch', 'common')
 
 envCython = env.Clone()
-envCython["CPPPATH"] += [np.get_include()]
+envCython["CPPPATH"] += [python_path]
 envCython["CCFLAGS"] += ["-Wno-#warnings", "-Wno-shadow", "-Wno-deprecated-declarations"]
 envCython["CCFLAGS"].remove("-Werror")
 

@@ -4,12 +4,13 @@ import threading
 import argparse
 import numpy as np
 from pprint import pprint
-from inputs import get_gamepad
 
 from kbhit import KBHit
 
 from opendbc.car.structs import CarControl
 from opendbc.car.panda_runner import PandaRunner
+
+from inputs import get_gamepad
 
 class Keyboard:
   def __init__(self):
