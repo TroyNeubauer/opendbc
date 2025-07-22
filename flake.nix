@@ -26,15 +26,17 @@
       doCheck = false;
     };
 
-    opendbcSrc = builtins.fetchGit {
-      url = "https://github.com/commaai/opendbc.git";
-      rev = "54c17f03018a99c6f4a9aa1862af015bbf8c2676";
+    opendbcSrc = pkgs.fetchFromGitHub {
+      owner = "commaai";
+      repo  = "opendbc";
+      rev = "v0.2.1";
+      sha256 = "sha256-bA2FJYy7rIkDfmLClXQz0qECBzEMKfbpglBEiRWUnE4=";
     };
     opendbcPkg = pythonPackages.buildPythonPackage rec {
-      pname    = "opendbc";
-      version  = "0.2.1";      # match the pyproject.toml
-      src      = opendbcSrc;
-      format   = "setuptools";
+      pname = "opendbc";
+      version = "0.2.1";
+      src = opendbcSrc;
+      format = "other";
 
       # Build‑time tools: Python‑SCons, Cython, NumPy, setuptools
       nativeBuildInputs = [
@@ -61,6 +63,13 @@
         # Patch SConstruct so that it uses numpy from nix nistead of dynamic path hack
         sed -i 's/^import numpy as np/# &/' SConstruct
         sed -i 's/np.get_include()/python_path/' SConstruct
+
+        # Patch schebangs into generator files so that they run properly
+        sed -i "1s|.*|#!${python.interpreter}|" opendbc/dbc/generator/*/*.py
+
+        # Export repo root so sub-scripts can use import opendbc.*
+        export PYTHONPATH="$PWD:$PYTHONPATH"
+        ${python.interpreter} opendbc/dbc/generator/generator.py .
       '';
 
       buildPhase = ''
@@ -73,21 +82,20 @@
       '';
     };
 
-    # 3) Package comma.ai’s panda/python as a PyPI package
     pandaSrc = pkgs.fetchgit {
-      url    = "https://github.com/commaai/panda.git";
-      rev    = "ca603115cb3f570e4d8ba20607ac24b4352ddbd6";
+      url = "https://github.com/commaai/panda.git";
+      rev = "ca603115cb3f570e4d8ba20607ac24b4352ddbd6";
       sha256 = "sha256-9LQrNFer4rghHmOHgj/kZjDIJhln8sRmducI3kBHYZU=";
     };
     pandaPkg = pythonPackages.buildPythonPackage rec {
-      pname               = "panda";
-      version             = "2025-07-20";
-      src                 = pandaSrc;
-      format              = "setuptools";
+      pname = "panda";
+      version = "2025-07-20";
+      src = pandaSrc;
+      format = "setuptools";
 
-      nativeBuildInputs     = [ pkgs.scons ];
+      nativeBuildInputs = [ pkgs.scons ];
       propagatedBuildInputs = [ opendbcPkg ];
-      doCheck               = false;
+      doCheck = false;
 
       buildPhase = ''
         ${python.interpreter} -m SCons -Q
@@ -115,6 +123,7 @@
     ]);
 
   in {
+    packages.${system}.opendbc = opendbcPkg;
     devShells.${system}.default = pkgs.mkShell {
       buildInputs = [
         pythonEnv
